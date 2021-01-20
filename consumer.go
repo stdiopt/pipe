@@ -2,19 +2,26 @@ package pipe
 
 import (
 	"context"
-	"errors"
 	"reflect"
 )
 
-// Sender a channel writer wrapper
-type Sender interface {
-	Send(v interface{}) error
-}
-
 // Consumer provides methods to consume a stream
 type Consumer interface {
+	// Next will block until we received a context cancellation or an input
+	// if the input is closed or a cancellation received it returns false returns
+	// true if a value was fetched
+	//
+	//		for c.Next() {
+	//			v := c.Value()
+	//		}
+	//
 	Next() bool
+
+	// Value returns the value fetched by the last Next() iteration
 	Value() interface{}
+
+	// Consume iterate through the consumer using a func with a typed argument
+	// if error is not nil, it will break the iteration
 	Consume(fn interface{}) error
 }
 
@@ -43,14 +50,6 @@ func (c *consumer) Consume(fn interface{}) error {
 	return nil
 }
 
-// Next will block until we received a context cancelation or an input
-// if the input is closed or a cancelation received it returns false returns
-// true if a value was fetched
-//
-//		for c.Next() {
-//			v := c.Value()
-//		}
-//
 func (c *consumer) Next() bool {
 	select {
 	case <-c.ctx.Done():
@@ -64,23 +63,6 @@ func (c *consumer) Next() bool {
 	}
 }
 
-// Value returns the value fetched by the last Next() iteration
 func (c *consumer) Value() interface{} {
 	return c.value
-}
-
-type sender struct {
-	ctx     context.Context
-	outputs []chan interface{}
-}
-
-func (p sender) Send(v interface{}) error {
-	for _, ch := range p.outputs {
-		select {
-		case <-p.ctx.Done():
-			return errors.New("canceled")
-		case ch <- v:
-		}
-	}
-	return nil
 }

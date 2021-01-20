@@ -21,6 +21,7 @@ func Example() {
 	)
 
 	evenodd := pipe.NewProc(
+		pipe.Workers(4),
 		pipe.Source(0, origin),
 		pipe.Func(func(c pipe.Consumer, odds, evens pipe.Sender) error {
 			for c.Next() {

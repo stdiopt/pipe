@@ -1,42 +1,43 @@
+/*Package pipe - an utility to create streamable workers
+
+As sometimes we are bound to IO blocks this will help to create workers to
+stream data
+
+*/
 package pipe
 
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"sync"
 )
 
+// ProcFunc is used by the Options funcs
 type ProcFunc func(p *Proc)
 
 type group []*Proc
 
-// ProcOptions options to start a processor
-type ProcOptions struct {
-	// Workers number of routines running the Func
-	Workers int
-	// Buffer input buffer size
-	Buffer int
-	// Func the worker function that will run to start consume and produce on
-	// the processor
-	Func interface{}
-	// Outputs declare named outputs to be in the same order as the Func params
-	Outputs []string
-}
-
+// Proc is a pipeline processor, should be created with 'NewProc' and must have
+// a func option
 type Proc struct {
-	opt     ProcOptions
-	mu      sync.Mutex
-	targets map[int]group
+	mu       sync.Mutex
+	nworkers int
+	bufsize  int
+	fn       interface{}
+	outputs  []string
+	targets  map[int]group
 }
 
-// ProcWithOptions creates a new processor
-func ProcWithOptions(opt ProcOptions) *Proc {
-	if opt.Func == nil {
-		panic("missing option: Func")
-	}
-	return &Proc{opt: opt}
-}
-
+// NewProc is used to create a Proc
+//
+//	p := pipe.NewProc(
+//		pipe.Buffer(8),
+//		pipe.Workers(10),
+//		pipe.Func(func(c pipe.Consumer, s1, s2 pipe.Sender) error {
+//			...
+//		}),
+//	)
 func NewProc(opt ...ProcFunc) *Proc {
 	p := &Proc{}
 	for _, fn := range opt {
@@ -46,7 +47,7 @@ func NewProc(opt ...ProcFunc) *Proc {
 }
 
 func (p *Proc) String() string {
-	return fmt.Sprintf("%T", p.opt.Func)
+	return fmt.Sprintf("%T", p.fn)
 }
 
 // Run will start processors sequentially and blocks until all completed
@@ -73,7 +74,6 @@ func (p *Proc) Link(k interface{}, t ...*Proc) {
 
 	if n < 0 {
 		return
-		// panic(fmt.Sprintf("link: '%v' doesn't exists on proc", k))
 	}
 
 	if p.targets == nil {
@@ -83,7 +83,7 @@ func (p *Proc) Link(k interface{}, t ...*Proc) {
 }
 
 func (p *Proc) namedOutput(k string) int {
-	for i, o := range p.opt.Outputs {
+	for i, o := range p.outputs {
 		if o == k {
 			return i
 		}
@@ -107,23 +107,26 @@ func (p *Proc) getOutputs(k int) group {
 // Func sets the proc Function option as function must have a consumer
 // and optionally 1 or more senders
 func Func(fn interface{}) ProcFunc {
-	return func(p *Proc) { p.opt.Func = fn }
+	if err := validateProcFunc(reflect.TypeOf(fn)); err != nil {
+		panic(err)
+	}
+	return func(p *Proc) { p.fn = fn }
 }
 
 // Workers sets the proc workers
 func Workers(n int) ProcFunc {
-	return func(p *Proc) { p.opt.Workers = n }
+	return func(p *Proc) { p.nworkers = n }
 }
 
 // Buffer sets the receive channel buffer
 func Buffer(n int) ProcFunc {
-	return func(p *Proc) { p.opt.Buffer = n }
+	return func(p *Proc) { p.bufsize = n }
 }
 
 // Outputs describes the proc outputs to be used by linkers
 // the name index must match the Func signature of senders
-func Outputs(s ...string) ProcFunc {
-	return func(p *Proc) { p.opt.Outputs = s }
+func Outputs(o ...string) ProcFunc {
+	return func(p *Proc) { p.outputs = o }
 }
 
 // Target will link this proc output identiied by k to targets

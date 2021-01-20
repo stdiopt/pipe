@@ -2,6 +2,7 @@ package pipe
 
 import (
 	"context"
+	"errors"
 	"reflect"
 	"sync"
 
@@ -53,16 +54,16 @@ func (l *line) get(p *Proc, n int) chan interface{} {
 		l.add(n, ch)
 		return ch
 	}
-	ch := make(chan interface{}, p.opt.Buffer)
+	ch := make(chan interface{}, p.bufsize)
 	l.add(n, ch)
 
 	l.procs[p] = ch
 
-	fnVal := reflect.ValueOf(p.opt.Func)
+	fnVal := reflect.ValueOf(p.fn)
 	fnTyp := fnVal.Type()
 
-	nworkers := p.opt.Workers
-	if nworkers == 0 {
+	nworkers := p.nworkers
+	if nworkers <= 0 {
 		nworkers = 1
 	}
 
@@ -93,12 +94,39 @@ func (l *line) get(p *Proc, n int) chan interface{} {
 			}()
 
 			ret := fnVal.Call(args)
-			if err, ok := ret[0].Interface().(error); ok && err != nil {
-				return err
+			if len(ret) > 0 {
+				if err, ok := ret[0].Interface().(error); ok && err != nil {
+					return err
+				}
 			}
 			return nil
 		})
 	}
 
 	return ch
+}
+
+var (
+	consumerTyp = reflect.TypeOf((*Consumer)(nil)).Elem()
+	senderTyp   = reflect.TypeOf((*Sender)(nil)).Elem()
+	errTyp      = reflect.TypeOf((*error)(nil)).Elem()
+)
+
+func validateProcFunc(fnTyp reflect.Type) error {
+	if fnTyp.NumIn() == 0 {
+		return errors.New("func must have at least 1 input")
+	}
+	for i := 0; i < fnTyp.NumIn(); i++ {
+		arg := fnTyp.In(i)
+		if arg != consumerTyp && arg != senderTyp {
+			return errors.New("func param must be either a pipe.Consumer or pipe.Sender")
+		}
+		if arg == consumerTyp && i != 0 {
+			return errors.New("func can only have 1 pipe.Consumer and must be the first argument")
+		}
+	}
+	if fnTyp.NumOut() != 1 || fnTyp.Out(0) != errTyp {
+		return errors.New("func should have an error return")
+	}
+	return nil
 }

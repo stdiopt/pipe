@@ -13,7 +13,9 @@ func TestSimple(t *testing.T) {
 	origin := pipe.NewProc(
 		pipe.Func(func(_ pipe.Consumer, ints pipe.Sender) error {
 			for i := 0; i < 10; i++ {
-				ints.Send(i)
+				if err := ints.Send(i); err != nil {
+					return err
+				}
 			}
 			return nil
 		}),
@@ -51,7 +53,9 @@ func TestNamedOutput(t *testing.T) {
 		pipe.Outputs("ints"),
 		pipe.Func(func(_ pipe.Consumer, ints pipe.Sender) error {
 			for i := 0; i < 10; i++ {
-				ints.Send(i)
+				if err := ints.Send(i); err != nil {
+					return err
+				}
 			}
 			return nil
 		}),
@@ -120,6 +124,10 @@ func TestCancelation(t *testing.T) {
 	)
 
 	err := origin.Run()
+
+	if err == nil {
+		t.Fatalf("\nwant: %v\n got: %v\n", "error", nil)
+	}
 
 	if want := "intentional error"; err.Error() != want {
 		t.Errorf("\nwant: %v\n got: %v\n", want, err)
@@ -209,7 +217,9 @@ func TestWorkers(t *testing.T) {
 	origin := pipe.NewProc(
 		pipe.Func(func(_ pipe.Consumer, ints pipe.Sender) error {
 			for i := 0; i < 10; i++ {
-				ints.Send(i)
+				if err := ints.Send(i); err != nil {
+					return err
+				}
 			}
 			return nil
 		}),
@@ -260,6 +270,9 @@ func TestWorkers(t *testing.T) {
 
 	// for better verification
 	sort.Ints(res)
+	if want := 10; len(res) != want {
+		t.Fatalf("\nwant: %v\n got: %v\n", want, len(res))
+	}
 	for i := 0; i < 10; i++ {
 		if want := i; res[i] != want {
 			t.Errorf("\nwant: %v\n got: %v\n", res[i], want)
@@ -277,7 +290,9 @@ func TestMultipleIO(t *testing.T) {
 	origin := pipe.NewProc(
 		pipe.Func(func(_ pipe.Consumer, ints pipe.Sender) error {
 			for i := 0; i < 10; i++ {
-				ints.Send(i)
+				if err := ints.Send(i); err != nil {
+					return err
+				}
 			}
 			return nil
 		}),
@@ -327,4 +342,70 @@ func TestMultipleIO(t *testing.T) {
 	}
 
 	t.Log(res)
+}
+
+func TestFunc(t *testing.T) {
+	tests := []struct {
+		name      string
+		fn        interface{}
+		wantPanic string
+	}{
+		{
+			"1 sender",
+			func(s pipe.Sender) error { return nil },
+			"",
+		},
+		{
+			"1 consumer",
+			func(c pipe.Consumer) error { return nil },
+			"",
+		},
+		{
+			"multiple senders",
+			func(s1, s2, s3 pipe.Sender) error { return nil },
+			"",
+		},
+		{
+			"consumer+multiple senders",
+			func(c pipe.Consumer, s1, s2, s3 pipe.Sender) error { return nil },
+			"",
+		},
+		{
+			"no params",
+			func() error { return nil },
+			"func must have at least 1 input",
+		},
+		{
+			"no return",
+			func(c pipe.Consumer) {},
+			"func should have an error return",
+		},
+		{
+			"consumer misplaced",
+			func(p pipe.Sender, c pipe.Consumer) error { return nil },
+			"func can only have 1 pipe.Consumer and must be the first argument",
+		},
+	}
+
+	for _, tt := range tests {
+		var rec string
+		func() {
+			defer func() {
+				v := recover()
+				if v == nil {
+					return
+				}
+				err, ok := v.(error)
+				if !ok {
+					t.Fatalf("expected an error panic")
+				}
+				rec = err.Error()
+			}()
+			pipe.NewProc(pipe.Func(tt.fn))
+		}()
+
+		if want := tt.wantPanic; rec != want {
+			t.Errorf("\nwant: %v\n got: %v\n", want, rec)
+		}
+	}
 }

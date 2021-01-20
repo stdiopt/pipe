@@ -26,6 +26,7 @@ func main() {
 	)
 
 	evenodd := pipe.NewProc(
+		pipe.Workers(4),        // use 4 go routines
 		pipe.Source(0, origin), // consumes output 0 from origin
 		pipe.Func(func(c pipe.Consumer, odds, evens pipe.Sender) error {
 			for c.Next() {
