@@ -10,6 +10,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"strings"
 	"sync"
 )
 
@@ -21,12 +22,29 @@ type group []*Proc
 // Proc is a pipeline processor, should be created with 'NewProc' and must have
 // a func option
 type Proc struct {
+	name     string
 	mu       sync.Mutex
 	nworkers int
 	bufsize  int
 	fn       interface{}
 	outputs  []string
 	targets  map[int]group
+}
+
+func (p *Proc) String() string {
+	ret := ""
+
+	if p.name != "" {
+		ret = p.name
+	}
+	if len(p.outputs) > 0 {
+		ret += ":" + strings.Join(p.outputs, ",")
+	}
+	if ret == "" {
+		return fmt.Sprintf("%T", p.fn)
+	}
+
+	return fmt.Sprintf("<%s>", ret)
 }
 
 // NewProc is used to create a Proc
@@ -44,10 +62,6 @@ func NewProc(opt ...ProcFunc) *Proc {
 		fn(p)
 	}
 	return p
-}
-
-func (p *Proc) String() string {
-	return fmt.Sprintf("%T", p.fn)
 }
 
 // Run will start processors sequentially and blocks until all completed
@@ -103,6 +117,11 @@ func (p *Proc) getOutputs(k int) group {
 }
 
 // Functional options
+
+// Name sets optional proc name for easier debugging
+func Name(n string) ProcFunc {
+	return func(p *Proc) { p.name = n }
+}
 
 // Func sets the proc Function option as function must have a consumer
 // and optionally 1 or more senders

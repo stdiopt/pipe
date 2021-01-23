@@ -11,7 +11,7 @@ import (
 
 func TestSimple(t *testing.T) {
 	origin := pipe.NewProc(
-		pipe.Func(func(_ pipe.Consumer, ints pipe.Sender) error {
+		pipe.Func(func(ints pipe.Sender) error {
 			for i := 0; i < 10; i++ {
 				if err := ints.Send(i); err != nil {
 					return err
@@ -51,7 +51,7 @@ func TestNamedOutput(t *testing.T) {
 
 	origin := pipe.NewProc(
 		pipe.Outputs("ints"),
-		pipe.Func(func(_ pipe.Consumer, ints pipe.Sender) error {
+		pipe.Func(func(ints pipe.Sender) error {
 			for i := 0; i < 10; i++ {
 				if err := ints.Send(i); err != nil {
 					return err
@@ -86,7 +86,7 @@ func TestNamedOutput(t *testing.T) {
 
 func TestCancelation(t *testing.T) {
 	origin := pipe.NewProc(
-		pipe.Func(func(_ pipe.Consumer, ints pipe.Sender) error {
+		pipe.Func(func(ints pipe.Sender) error {
 			for i := 0; i < 10; i++ {
 				if err := ints.Send(i); err != nil {
 					return err
@@ -144,7 +144,7 @@ func TestSplit(t *testing.T) {
 	even := []int{}
 
 	origin := pipe.NewProc(
-		pipe.Func(func(_ pipe.Consumer, ints pipe.Sender) error {
+		pipe.Func(func(ints pipe.Sender) error {
 			for i := 0; i < 10; i++ {
 				if err := ints.Send(i); err != nil {
 					return err
@@ -215,7 +215,7 @@ func TestSplit(t *testing.T) {
 
 func TestWorkers(t *testing.T) {
 	origin := pipe.NewProc(
-		pipe.Func(func(_ pipe.Consumer, ints pipe.Sender) error {
+		pipe.Func(func(ints pipe.Sender) error {
 			for i := 0; i < 10; i++ {
 				if err := ints.Send(i); err != nil {
 					return err
@@ -224,12 +224,15 @@ func TestWorkers(t *testing.T) {
 			return nil
 		}),
 	)
+
+	workerCount := 0
 	// each work takes 1 second but having multiple workers they shouldn't take
 	// 10(input number) seconds
 	workers := pipe.NewProc(
 		pipe.Workers(10),
 		pipe.Source(0, origin),
 		pipe.Func(func(c pipe.Consumer, out pipe.Sender) error {
+			workerCount++
 			for c.Next() {
 				v := c.Value().(int)
 				time.Sleep(1 * time.Second)
@@ -255,6 +258,10 @@ func TestWorkers(t *testing.T) {
 	mark := time.Now()
 	err := origin.Run()
 	dur := time.Since(mark)
+
+	if want := 10; workerCount != want {
+		t.Errorf("\nwant: %v\n got: %v\n", want, workerCount)
+	}
 
 	if want := error(nil); err != want {
 		t.Errorf("\nwant: %v\n got: %v\n", want, err)
@@ -288,7 +295,7 @@ func TestWorkers(t *testing.T) {
 // - writer will receive from origin and neg
 func TestMultipleIO(t *testing.T) {
 	origin := pipe.NewProc(
-		pipe.Func(func(_ pipe.Consumer, ints pipe.Sender) error {
+		pipe.Func(func(ints pipe.Sender) error {
 			for i := 0; i < 10; i++ {
 				if err := ints.Send(i); err != nil {
 					return err

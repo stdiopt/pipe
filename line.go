@@ -67,8 +67,13 @@ func (l *line) get(p *Proc, n int) chan interface{} {
 		nworkers = 1
 	}
 
+	// Senders are shared accross workers
 	senders := []sender{}
-	for i := 0; i < fnTyp.NumIn()-1; i++ {
+	nsenders := fnTyp.NumIn()
+	if fnTyp.In(0) == consumerTyp {
+		nsenders--
+	}
+	for i := 0; i < nsenders; i++ {
 		s := sender{ctx: l.ctx}
 		// get Indexed outputs
 		for _, t := range p.getOutputs(i) {
@@ -78,9 +83,10 @@ func (l *line) get(p *Proc, n int) chan interface{} {
 	}
 
 	for i := 0; i < nworkers; i++ {
-		c := &consumer{ctx: l.ctx, input: ch}
-		args := []reflect.Value{
-			reflect.ValueOf(c),
+		args := make([]reflect.Value, 0, fnTyp.NumIn())
+		if fnTyp.In(0) == consumerTyp {
+			c := &consumer{ctx: l.ctx, input: ch}
+			args = append(args, reflect.ValueOf(c))
 		}
 		for _, s := range senders {
 			args = append(args, reflect.ValueOf(s))
