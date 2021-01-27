@@ -47,7 +47,7 @@ func Example() {
 		pipe.Source(1, evenodd),
 		pipe.Func(func(c pipe.Consumer) error {
 			for c.Next() {
-				v := c.Value().(int) // we expect strings
+				v := c.Value().(int)
 				res = append(res, v)
 			}
 			return nil
