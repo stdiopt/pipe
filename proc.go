@@ -118,6 +118,15 @@ func (p *Proc) getOutputs(k int) group {
 
 // Functional options
 
+// Group groups options in one ProcFunc
+func Group(fns ...ProcFunc) ProcFunc {
+	return func(p *Proc) {
+		for _, fn := range fns {
+			fn(p)
+		}
+	}
+}
+
 // Name sets optional proc name for easier debugging
 func Name(n string) ProcFunc {
 	return func(p *Proc) { p.name = n }
