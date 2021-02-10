@@ -63,10 +63,14 @@ func (d *dotWriter) links(w io.Writer, p *Proc) {
 	if len(p.targets) == 0 {
 		d.style[name] = `shape=circle, fillcolor="blue"`
 	}
-	for _, group := range p.targets {
+	for i, group := range p.targets {
 		for _, o := range group {
 			d.links(w, o)
-			fmt.Fprintf(w, "\t%q -> %q\n", name, d.nodeName(o))
+			fmt.Fprintf(w, "\t%q -> %q", name, d.nodeName(o))
+			if i < len(p.outputs) {
+				fmt.Fprintf(w, " [label=%q]", p.outputs[i])
+			}
+			fmt.Fprintln(w)
 		}
 	}
 }
