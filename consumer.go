@@ -23,6 +23,9 @@ type Consumer interface {
 	// Consume iterate through the consumer using a func with a typed argument
 	// if error is not nil, it will break the iteration
 	Consume(fn interface{}) error
+
+	// Context returns the current consumer context
+	Context() context.Context
 }
 
 type consumer struct {
@@ -65,4 +68,8 @@ func (c *consumer) Next() bool {
 
 func (c *consumer) Value() interface{} {
 	return c.value
+}
+
+func (c *consumer) Context() context.Context {
+	return c.ctx
 }
