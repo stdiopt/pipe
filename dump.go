@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"strings"
 )
 
 // DumpDOT a proc line in graphviz dot language format
@@ -11,7 +12,7 @@ func DumpDOT(p *Proc) string {
 	buf := bytes.NewBuffer(nil)
 
 	fmt.Fprintf(buf, "digraph {\n")
-	fmt.Fprintln(buf, "\t"+`node[shape=square, style="filled,rounded", width=1]`)
+	fmt.Fprintln(buf, "\t"+`node[shape=square, style="filled,rounded", width=1, color="#aaaaaa"]`)
 	d := &dotWriter{}
 	d.links(buf, p)
 
@@ -53,16 +54,41 @@ func (d *dotWriter) links(w io.Writer, p *Proc) {
 	}
 	if d.touched == nil {
 		d.touched = map[*Proc]struct{}{}
-		d.style[name] = `shape=circle, fillcolor="green"`
+		// default style
+		d.style[name] = `shape=circle, fillcolor="#77ee77"`
 	}
 	if _, ok := d.touched[p]; ok {
 		return
 	}
 	d.touched[p] = struct{}{}
 
+	style := ""
+	label := []string{}
 	if len(p.targets) == 0 {
-		d.style[name] = `shape=circle, fillcolor="blue"`
+		style = `shape=circle fillcolor="#aaaaff"`
 	}
+	if p.nworkers > 1 {
+		style += " peripheries=3"
+		label = append(label,
+			fmt.Sprintf(`workers: %d`, p.nworkers),
+		)
+	}
+	if p.bufsize > 1 {
+		label = append(label,
+			fmt.Sprintf(`bufsize: %d`, p.bufsize),
+		)
+	}
+	if len(label) != 0 {
+		style += fmt.Sprintf(` label=<%s<br/><br/><font point-size="8">%s</font>>`,
+			name,
+			strings.Join(label, "<br/>"),
+		)
+	}
+
+	if style != "" {
+		d.style[name] = style
+	}
+
 	for i, group := range p.targets {
 		for _, o := range group {
 			d.links(w, o)
