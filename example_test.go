@@ -10,7 +10,7 @@ import (
 
 func Example() {
 	origin := pipe.NewProc(
-		pipe.Func(func(_ pipe.Consumer, ints pipe.Sender) error {
+		pipe.WithFunc(func(_ pipe.Consumer, ints pipe.Sender) error {
 			for i := 0; i < 10; i++ {
 				if err := ints.Send(i); err != nil {
 					return err
@@ -21,36 +21,33 @@ func Example() {
 	)
 
 	evenodd := pipe.NewProc(
-		pipe.Workers(4),
-		pipe.Source(0, origin),
-		pipe.Func(func(c pipe.Consumer, odds, evens pipe.Sender) error {
-			for c.Next() {
-				v := c.Value().(int)
+		pipe.WithWorkers(4),
+		pipe.WithSource(0, origin),
+		pipe.WithFunc(func(c pipe.Consumer, odds, evens pipe.Sender) error {
+			return c.Consume(func(vv interface{}) error {
+				v := vv.(int)
 				var err error
 				if v&1 == 0 {
 					err = evens.Send(v)
 				} else {
 					err = odds.Send(v)
 				}
-				if err != nil {
-					return err
-				}
-			}
-			return nil
+				return err
+			})
 		}),
 	)
 
 	res := []int{}
 	pipe.NewProc(
-		pipe.Buffer(10),
-		pipe.Source(0, evenodd),
-		pipe.Source(1, evenodd),
-		pipe.Func(func(c pipe.Consumer) error {
-			for c.Next() {
-				v := c.Value().(int)
+		pipe.WithBuffer(10),
+		pipe.WithSource(0, evenodd),
+		pipe.WithSource(1, evenodd),
+		pipe.WithFunc(func(c pipe.Consumer) error {
+			return c.Consume(func(vv interface{}) error {
+				v := vv.(int)
 				res = append(res, v)
-			}
-			return nil
+				return nil
+			})
 		}),
 	)
 	if err := origin.Run(); err != nil {

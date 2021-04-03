@@ -11,7 +11,7 @@ import (
 
 func TestSimple(t *testing.T) {
 	origin := pipe.NewProc(
-		pipe.Func(func(ints pipe.Sender) error {
+		pipe.WithFunc(func(ints pipe.Sender) error {
 			for i := 0; i < 10; i++ {
 				if err := ints.Send(i); err != nil {
 					return err
@@ -23,13 +23,13 @@ func TestSimple(t *testing.T) {
 
 	res := []int{}
 	pipe.NewProc(
-		pipe.Source(0, origin),
-		pipe.Func(func(c pipe.Consumer) error {
-			for c.Next() {
-				v := c.Value().(int)
+		pipe.WithSource(0, origin),
+		pipe.WithFunc(func(c pipe.Consumer) error {
+			return c.Consume(func(vv interface{}) error {
+				v := vv.(int)
 				res = append(res, v)
-			}
-			return nil
+				return nil
+			})
 		}),
 	)
 
@@ -50,8 +50,8 @@ func TestNamedOutput(t *testing.T) {
 	res := []int{}
 
 	origin := pipe.NewProc(
-		pipe.Outputs("ints"),
-		pipe.Func(func(ints pipe.Sender) error {
+		pipe.WithOutputs("ints"),
+		pipe.WithFunc(func(ints pipe.Sender) error {
 			for i := 0; i < 10; i++ {
 				if err := ints.Send(i); err != nil {
 					return err
@@ -62,13 +62,13 @@ func TestNamedOutput(t *testing.T) {
 	)
 
 	pipe.NewProc(
-		pipe.Source("ints", origin),
-		pipe.Func(func(c pipe.Consumer) error {
-			for c.Next() {
-				v := c.Value().(int)
+		pipe.WithNamedSource("ints", origin),
+		pipe.WithFunc(func(c pipe.Consumer) error {
+			return c.Consume(func(vv interface{}) error {
+				v := vv.(int)
 				res = append(res, v)
-			}
-			return nil
+				return nil
+			})
 		}),
 	)
 
@@ -86,7 +86,7 @@ func TestNamedOutput(t *testing.T) {
 
 func TestCancelation(t *testing.T) {
 	origin := pipe.NewProc(
-		pipe.Func(func(ints pipe.Sender) error {
+		pipe.WithFunc(func(ints pipe.Sender) error {
 			for i := 0; i < 10; i++ {
 				if err := ints.Send(i); err != nil {
 					return err
@@ -96,30 +96,27 @@ func TestCancelation(t *testing.T) {
 		}),
 	)
 	pass := pipe.NewProc(
-		pipe.Source(0, origin),
-		pipe.Func(func(c pipe.Consumer, ints pipe.Sender) error {
-			for c.Next() {
-				v := c.Value().(int)
+		pipe.WithSource(0, origin),
+		pipe.WithFunc(func(c pipe.Consumer, ints pipe.Sender) error {
+			return c.Consume(func(vv interface{}) error {
+				v := vv.(int)
 				if v == 5 {
 					return errors.New("intentional error")
 				}
-				if err := ints.Send(v); err != nil {
-					return err
-				}
-			}
-			return nil
+				return ints.Send(v)
+			})
 		}),
 	)
 
 	res := []int{}
 	pipe.NewProc(
-		pipe.Source(0, pass),
-		pipe.Func(func(c pipe.Consumer) error {
-			for c.Next() {
-				v := c.Value().(int)
+		pipe.WithSource(0, pass),
+		pipe.WithFunc(func(c pipe.Consumer) error {
+			return c.Consume(func(vv interface{}) error {
+				v := vv.(int)
 				res = append(res, v)
-			}
-			return nil
+				return nil
+			})
 		}),
 	)
 
@@ -144,7 +141,7 @@ func TestSplit(t *testing.T) {
 	even := []int{}
 
 	origin := pipe.NewProc(
-		pipe.Func(func(ints pipe.Sender) error {
+		pipe.WithFunc(func(ints pipe.Sender) error {
 			for i := 0; i < 10; i++ {
 				if err := ints.Send(i); err != nil {
 					return err
@@ -155,43 +152,40 @@ func TestSplit(t *testing.T) {
 	)
 
 	split := pipe.NewProc(
-		pipe.Source(0, origin),
-		pipe.Func(func(c pipe.Consumer, odds, evens pipe.Sender) error {
-			for c.Next() {
-				v := c.Value().(int)
+		pipe.WithSource(0, origin),
+		pipe.WithFunc(func(c pipe.Consumer, odds, evens pipe.Sender) error {
+			return c.Consume(func(vv interface{}) error {
+				v := vv.(int)
 				var err error
 				if v&1 == 0 {
 					err = evens.Send(v)
 				} else {
 					err = odds.Send(v)
 				}
-				if err != nil {
-					return err
-				}
-			}
-			return nil
+				return err
+			})
 		}),
 	)
 
 	pipe.NewProc(
-		pipe.Source(0, split),
-		pipe.Func(func(c pipe.Consumer) error {
-			for c.Next() {
-				v := c.Value().(int)
+		pipe.WithSource(0, split),
+		pipe.WithFunc(func(c pipe.Consumer) error {
+			return c.Consume(func(vv interface{}) error {
+				v := vv.(int)
 				odd = append(odd, v)
-			}
-			return nil
+				return nil
+			})
 		}),
 	)
 
 	pipe.NewProc(
-		pipe.Source(1, split),
-		pipe.Func(func(c pipe.Consumer) error {
-			for c.Next() {
-				v := c.Value().(int)
+		pipe.WithSource(1, split),
+		pipe.WithFunc(func(c pipe.Consumer) error {
+			return c.Consume(func(vv interface{}) error {
+				v := vv.(int)
 				even = append(even, v)
-			}
-			return nil
+				return nil
+			})
 		}),
 	)
 
@@ -215,7 +209,7 @@ func TestSplit(t *testing.T) {
 
 func TestWorkers(t *testing.T) {
 	origin := pipe.NewProc(
-		pipe.Func(func(ints pipe.Sender) error {
+		pipe.WithFunc(func(ints pipe.Sender) error {
 			for i := 0; i < 10; i++ {
 				if err := ints.Send(i); err != nil {
 					return err
@@ -229,29 +223,26 @@ func TestWorkers(t *testing.T) {
 	// each work takes 1 second but having multiple workers they shouldn't take
 	// 10(input number) seconds
 	workers := pipe.NewProc(
-		pipe.Workers(10),
-		pipe.Source(0, origin),
-		pipe.Func(func(c pipe.Consumer, out pipe.Sender) error {
+		pipe.WithWorkers(10),
+		pipe.WithSource(0, origin),
+		pipe.WithFunc(func(c pipe.Consumer, out pipe.Sender) error {
 			workerCount++
-			for c.Next() {
-				v := c.Value().(int)
+			return c.Consume(func(vv interface{}) error {
+				v := vv.(int)
 				time.Sleep(1 * time.Second)
-				if err := out.Send(v); err != nil {
-					return err
-				}
-			}
-			return nil
+				return out.Send(v)
+			})
 		}),
 	)
 	res := []int{}
 	pipe.NewProc(
-		pipe.Source(0, workers),
-		pipe.Func(func(c pipe.Consumer) error {
-			for c.Next() {
-				v := c.Value().(int)
+		pipe.WithSource(0, workers),
+		pipe.WithFunc(func(c pipe.Consumer) error {
+			return c.Consume(func(vv interface{}) error {
+				v := vv.(int)
 				res = append(res, v)
-			}
-			return nil
+				return nil
+			})
 		}),
 	)
 
@@ -295,7 +286,7 @@ func TestWorkers(t *testing.T) {
 // - writer will receive from origin and neg
 func TestMultipleIO(t *testing.T) {
 	origin := pipe.NewProc(
-		pipe.Func(func(ints pipe.Sender) error {
+		pipe.WithFunc(func(ints pipe.Sender) error {
 			for i := 0; i < 10; i++ {
 				if err := ints.Send(i); err != nil {
 					return err
@@ -306,28 +297,28 @@ func TestMultipleIO(t *testing.T) {
 	)
 
 	sum10 := pipe.NewProc(
-		pipe.Source(0, origin),
-		pipe.Func(func(c pipe.Consumer, ints pipe.Sender) error {
-			for c.Next() {
-				v := c.Value().(int)
+		pipe.WithSource(0, origin),
+		pipe.WithFunc(func(c pipe.Consumer, ints pipe.Sender) error {
+			return c.Consume(func(vv interface{}) error {
+				v := vv.(int)
 				if err := ints.Send(v + 10); err != nil {
 					return err
 				}
-			}
-			return nil
+				return nil
+			})
 		}),
 	)
 
 	res := []int{}
 	pipe.NewProc(
-		pipe.Source(0, origin),
-		pipe.Source(0, sum10),
-		pipe.Func(func(c pipe.Consumer) error {
-			for c.Next() {
-				v := c.Value().(int)
+		pipe.WithSource(0, origin),
+		pipe.WithSource(0, sum10),
+		pipe.WithFunc(func(c pipe.Consumer) error {
+			return c.Consume(func(vv interface{}) error {
+				v := vv.(int)
 				res = append(res, v)
-			}
-			return nil
+				return nil
+			})
 		}),
 	)
 
@@ -380,7 +371,7 @@ func TestFunc(t *testing.T) {
 		{
 			"no params",
 			func() error { return nil },
-			"func must have at least 1 input",
+			"func must have at least 1 param",
 		},
 		{
 			"no return",
@@ -408,7 +399,7 @@ func TestFunc(t *testing.T) {
 				}
 				rec = err.Error()
 			}()
-			pipe.NewProc(pipe.Func(tt.fn))
+			pipe.NewProc(pipe.WithFunc(tt.fn))
 		}()
 
 		if want := tt.wantPanic; rec != want {

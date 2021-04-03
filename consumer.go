@@ -2,74 +2,54 @@ package pipe
 
 import (
 	"context"
-	"reflect"
+	"fmt"
 )
+
+type (
+	ConsumerFunc       func(v interface{}) error
+	ConsumerMiddleware func(fn ConsumerFunc) ConsumerFunc
+)
+
+func mergeMiddlewares(mws ...ConsumerMiddleware) ConsumerMiddleware {
+	return func(fn ConsumerFunc) ConsumerFunc {
+		for i := len(mws) - 1; i >= 0; i-- {
+			fn = mws[i](fn)
+		}
+		return fn
+	}
+}
 
 // Consumer provides methods to consume a stream
 type Consumer interface {
-	// Next will block until we received a context cancellation or an input
-	// if the input is closed or a cancellation received it returns false returns
-	// true if a value was fetched
-	//
-	//		for c.Next() {
-	//			v := c.Value()
-	//		}
-	//
-	Next() bool
-
-	// Value returns the value fetched by the last Next() iteration
-	Value() interface{}
-
-	// Consume iterate through the consumer using a func with a typed argument
-	// if error is not nil, it will break the iteration
-	Consume(fn interface{}) error
-
 	// Context returns the current consumer context
 	Context() context.Context
+
+	Consume(ConsumerFunc) error
 }
 
 type consumer struct {
-	ctx   context.Context
-	input chan interface{}
-	value interface{}
+	ctx        context.Context
+	input      chan Message
+	middleware func(fn ConsumerFunc) ConsumerFunc
 }
 
-func (c *consumer) Consume(fn interface{}) error {
-	fnVal := reflect.ValueOf(fn)
-	fnTyp := fnVal.Type()
-	if fnTyp.NumIn() != 1 ||
-		fnTyp.NumOut() != 1 ||
-		!fnTyp.Out(0).Implements(reflect.TypeOf((*error)(nil)).Elem()) {
-		panic("consume param should be 'func(t T) error'")
+func (c *consumer) Context() context.Context { return c.ctx }
+
+func (c *consumer) Consume(fn ConsumerFunc) error {
+	if c.middleware != nil {
+		fn = c.middleware(fn)
 	}
-	args := make([]reflect.Value, 1)
-	for c.Next() {
-		args[0] = reflect.ValueOf(c.Value())
-		ret := fnVal.Call(args)
-		if err, ok := ret[0].Interface().(error); ok && err != nil {
-			return err
+	for {
+		select {
+		case <-c.ctx.Done():
+			return nil
+		case v, ok := <-c.input:
+			if !ok {
+				return nil
+			}
+			if err := fn(v.Value()); err != nil {
+				return fmt.Errorf("error: %w, origin: %v", err, v.Origin())
+			}
 		}
 	}
-	return nil
-}
-
-func (c *consumer) Next() bool {
-	select {
-	case <-c.ctx.Done():
-		return false
-	case v, ok := <-c.input:
-		if !ok {
-			return false
-		}
-		c.value = v
-		return true
-	}
-}
-
-func (c *consumer) Value() interface{} {
-	return c.value
-}
-
-func (c *consumer) Context() context.Context {
-	return c.ctx
 }

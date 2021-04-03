@@ -13,7 +13,8 @@ type Sender interface {
 
 type sender struct {
 	ctx     context.Context
-	outputs []chan interface{}
+	origin  *Proc
+	outputs []chan Message
 }
 
 func (p sender) Send(v interface{}) error {
@@ -21,7 +22,7 @@ func (p sender) Send(v interface{}) error {
 		select {
 		case <-p.ctx.Done():
 			return errors.New("canceled")
-		case ch <- v:
+		case ch <- message{p.origin, v}:
 		}
 	}
 	return nil

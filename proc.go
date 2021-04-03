@@ -27,8 +27,11 @@ type Proc struct {
 	nworkers int
 	bufsize  int
 	fn       interface{}
-	outputs  []string
-	targets  map[int]group
+
+	consumerMiddleware func(ConsumerFunc) ConsumerFunc
+
+	outputs []string
+	targets map[int]group
 }
 
 func (p *Proc) String() string {
@@ -127,46 +130,69 @@ func Group(fns ...ProcFunc) ProcFunc {
 	}
 }
 
-// Name sets optional proc name for easier debugging
-func Name(n string) ProcFunc {
+// WithName sets optional proc name for easier debugging
+func WithName(n string) ProcFunc {
 	return func(p *Proc) { p.name = n }
 }
 
-// Func sets the proc Function option as function must have a consumer
+// WithFunc sets the proc Function option as function must have a consumer
 // and optionally 1 or more senders
-func Func(fn interface{}) ProcFunc {
+func WithFunc(fn interface{}) ProcFunc {
 	if err := validateProcFunc(reflect.TypeOf(fn)); err != nil {
 		panic(err)
 	}
 	return func(p *Proc) { p.fn = fn }
 }
 
-// Workers sets the proc workers
-func Workers(n int) ProcFunc {
+// WithWorkers sets the proc workers
+func WithWorkers(n int) ProcFunc {
 	return func(p *Proc) { p.nworkers = n }
 }
 
-// Buffer sets the receive channel buffer
-func Buffer(n int) ProcFunc {
+// WithBuffer sets the receive channel buffer
+func WithBuffer(n int) ProcFunc {
 	return func(p *Proc) { p.bufsize = n }
 }
 
-// Outputs describes the proc outputs to be used by linkers
+// WithOutputs describes the proc outputs to be used by linkers
 // the name index must match the Func signature of senders
-func Outputs(o ...string) ProcFunc {
+func WithOutputs(o ...string) ProcFunc {
 	return func(p *Proc) { p.outputs = o }
 }
 
-// Target will link this proc output identiied by k to targets
-func Target(k interface{}, targets ...*Proc) ProcFunc {
+// WithTarget will link this proc output identified by k to targets.
+func WithTarget(k int, targets ...*Proc) ProcFunc {
 	return func(p *Proc) { p.Link(k, targets...) }
 }
 
-// Source will link this proc to the sources by the outputs identified by k
-func Source(k interface{}, source ...*Proc) ProcFunc {
+// WithNamedTarget will link this proc output identified by name to targets.
+func WithNamedTarget(k string, targets ...*Proc) ProcFunc {
+	return func(p *Proc) { p.Link(k, targets...) }
+}
+
+// WithSource will link this proc to the sources by the outputs identified by
+// index n.
+func WithSource(n int, source ...*Proc) ProcFunc {
 	return func(p *Proc) {
 		for _, s := range source {
-			s.Link(k, p)
+			s.Link(n, p)
 		}
+	}
+}
+
+// WithNamedSource will link this proc to the sources by the outputs identified
+// by name s.
+func WithNamedSource(s string, source ...*Proc) ProcFunc {
+	return func(p *Proc) {
+		for _, s := range source {
+			s.Link(s, p)
+		}
+	}
+}
+
+// WithConsumerMiddleware sets a ConsumerMiddleware to be used while consuming data.
+func WithConsumerMiddleware(mws ...ConsumerMiddleware) ProcFunc {
+	return func(p *Proc) {
+		p.consumerMiddleware = mergeMiddlewares(mws...)
 	}
 }
