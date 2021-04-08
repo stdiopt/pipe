@@ -13,6 +13,8 @@ func Transform(fn interface{}, opts ...pipe.ProcFunc) *pipe.Proc {
 	)
 }
 
+// TransformFunc returns a procfunc that executes fn to transform a single
+// input to a single output.
 func TransformFunc(fn interface{}) pipe.ProcFunc {
 	fnVal := reflect.ValueOf(fn)
 	fnTyp := fnVal.Type()

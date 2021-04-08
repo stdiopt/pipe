@@ -3,52 +3,34 @@ package pipe
 import (
 	"fmt"
 	"log"
-	"reflect"
 )
+
+type ConsumerMiddleware func(fn ConsumerFunc) ConsumerFunc
+
+func mergeMiddlewares(mws ...ConsumerMiddleware) ConsumerMiddleware {
+	return func(fn ConsumerFunc) ConsumerFunc {
+		for i := len(mws) - 1; i >= 0; i-- {
+			fn = mws[i](fn)
+		}
+		return fn
+	}
+}
 
 type errFatal struct{ err error }
 
 func (e errFatal) Error() string { return e.err.Error() }
 func (e errFatal) Unwrap() error { return e.err }
 
-func TypedConsumer(fn interface{}) ConsumerFunc {
-	fnVal := reflect.ValueOf(fn)
-	fnTyp := fnVal.Type()
-	if fnTyp.NumIn() != 1 ||
-		fnTyp.NumOut() != 1 ||
-		!fnTyp.Out(0).Implements(reflect.TypeOf((*error)(nil)).Elem()) {
-		panic("consume param should be 'func(T) error'")
-	}
-	args := make([]reflect.Value, 1)
-
-	return func(v interface{}) error {
-		args[0] = reflect.ValueOf(v)
-		if args[0].Type() != fnTyp.In(0) {
-			return errFatal{fmt.Errorf("invalid value type: %q for consumer type: %q", args[0].Type(), fnTyp.In(0))}
-		}
-
-		ret := fnVal.Call(args)
-		if err, ok := ret[0].Interface().(error); ok && err != nil {
-			return err
-		}
-		return nil
-	}
-}
-
-func TypedConsume(c Consumer, fn interface{}) error {
-	return c.Consume(TypedConsumer(fn))
-}
-
-func RetryConsumer(tries int) func(fn ConsumerFunc) ConsumerFunc {
+func RetryConsumer(tries int) ConsumerMiddleware {
 	return func(fn ConsumerFunc) ConsumerFunc {
-		return func(v interface{}) error {
+		return func(m Message) error {
 			retry := 0
 			var err error
 			for ; retry <= tries; retry++ {
 				if retry > 0 {
-					log.Printf("retrying: %v", v)
+					log.Printf("retrying: %v", m.Value())
 				}
-				err = fn(v)
+				err = fn(m)
 				if err == nil {
 					break
 				}
@@ -57,7 +39,7 @@ func RetryConsumer(tries int) func(fn ConsumerFunc) ConsumerFunc {
 				}
 			}
 			if err != nil {
-				return fmt.Errorf("%w (retries: %d) %T", err, retry, v)
+				return fmt.Errorf("%w (retries: %d) %T", err, retry, m.Value())
 			}
 			return nil
 		}
@@ -67,9 +49,9 @@ func RetryConsumer(tries int) func(fn ConsumerFunc) ConsumerFunc {
 func LogConsumer(prefix string) ConsumerMiddleware {
 	return func(fn ConsumerFunc) ConsumerFunc {
 		log := log.New(log.Writer(), fmt.Sprintf("[%s] ", prefix), 0)
-		return func(v interface{}) error {
-			log.Println("Received:", v)
-			return fn(v)
+		return func(m Message) error {
+			log.Println("Received:", m)
+			return fn(m)
 		}
 	}
 }

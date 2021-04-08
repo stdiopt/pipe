@@ -2,6 +2,7 @@ package pipe_test
 
 import (
 	"errors"
+	"fmt"
 	"sort"
 	"testing"
 	"time"
@@ -126,7 +127,7 @@ func TestCancelation(t *testing.T) {
 		t.Fatalf("\nwant: %v\n got: %v\n", "error", nil)
 	}
 
-	if want := "intentional error"; err.Error() != want {
+	if want := fmt.Sprintf("intentional error, origin: <unnamed#%p>", origin); err.Error() != want {
 		t.Errorf("\nwant: %v\n got: %v\n", want, err)
 	}
 
@@ -383,6 +384,11 @@ func TestFunc(t *testing.T) {
 			func(p pipe.Sender, c pipe.Consumer) error { return nil },
 			"func can only have 1 pipe.Consumer and must be the first argument",
 		},
+		{
+			"multiple consumers",
+			func(c1, c2 pipe.Consumer, s pipe.Sender) error { return nil },
+			"func can only have 1 pipe.Consumer and must be the first argument",
+		},
 	}
 
 	for _, tt := range tests {
@@ -405,5 +411,49 @@ func TestFunc(t *testing.T) {
 		if want := tt.wantPanic; rec != want {
 			t.Errorf("\nwant: %v\n got: %v\n", want, rec)
 		}
+	}
+}
+
+func TestConsumerMiddleware(t *testing.T) {
+	orig := pipe.NewProc(
+		pipe.WithFunc(func(s pipe.Sender) error {
+			for i := 0; i < 10; i++ {
+				if err := s.Send(i); err != nil {
+					return err
+				}
+			}
+			return nil
+		}),
+	)
+
+	consumer := 0
+	mw := 0
+	pipe.NewProc(
+		pipe.WithSource(0, orig),
+		pipe.WithConsumerMiddleware(
+			func(fn pipe.ConsumerFunc) pipe.ConsumerFunc {
+				return func(m pipe.Message) error {
+					mw++
+					return fn(m)
+				}
+			},
+		),
+		pipe.WithFunc(func(c pipe.Consumer) error {
+			return c.Consume(func(vv interface{}) error {
+				consumer += vv.(int)
+				return nil
+			})
+		}),
+	)
+	err := orig.Run()
+
+	if want := error(nil); err != want {
+		t.Errorf("\nwant: %v\n got: %v\n", want, err)
+	}
+	if want := 10; mw != want {
+		t.Errorf("\nwant: %v\n got: %v\n", want, mw)
+	}
+	if want := 45; consumer != want {
+		t.Errorf("\nwant: %v\n got: %v\n", want, consumer)
 	}
 }

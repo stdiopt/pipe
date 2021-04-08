@@ -22,25 +22,20 @@ type ReadErrorCloser interface {
 func AsReader(c pipe.Consumer) ReadErrorCloser {
 	pr, pw := io.Pipe()
 	go func() {
-		defer pw.Close()
-		c.Consume(func(vv interface{}) error {
-			b, ok := vv.([]byte)
-			if !ok {
-				pw.CloseWithError(ErrInvalidData(fmt.Sprintf("%T", vv)))
-				return nil
-			}
+		err := c.Consume(func(b []byte) error {
 			if _, err := pw.Write(b); err != nil {
 				pw.CloseWithError(err)
 				return nil
 			}
 			return nil
 		})
+		pw.CloseWithError(err)
 	}()
 	return pr
 }
 
-// NewIOReader returns a proc that reads a reader and sends []byte on channel 0.
-func NewIOReader(r io.Reader, opts ...pipe.ProcFunc) *pipe.Proc {
+// NewIOReaderProc returns a proc that reads a reader and sends []byte on channel 0.
+func NewIOReaderProc(r io.Reader, opts ...pipe.ProcFunc) *pipe.Proc {
 	return pipe.NewProc(
 		pipe.Group(opts...),
 		pipe.WithFunc(func(s pipe.Sender) error {
@@ -65,16 +60,12 @@ func NewIOReader(r io.Reader, opts ...pipe.ProcFunc) *pipe.Proc {
 	)
 }
 
-// NewIOWriter returns a proc that writes bytes received from consumer.
-func NewIOWriter(w io.Writer, opts ...pipe.ProcFunc) *pipe.Proc {
+// NewIOWriterProc returns a proc that writes bytes received from consumer.
+func NewIOWriterProc(w io.Writer, opts ...pipe.ProcFunc) *pipe.Proc {
 	return pipe.NewProc(
 		pipe.Group(opts...),
 		pipe.WithFunc(func(c pipe.Consumer) error {
-			return c.Consume(func(vv interface{}) error {
-				b, ok := vv.([]byte)
-				if !ok {
-					return fmt.Errorf("invalid type: %T", vv)
-				}
+			return c.Consume(func(b []byte) error {
 				_, err := w.Write(b)
 				return err
 			})

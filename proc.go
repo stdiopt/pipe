@@ -44,7 +44,7 @@ func (p *Proc) String() string {
 		ret += ":" + strings.Join(p.outputs, ",")
 	}
 	if ret == "" {
-		return fmt.Sprintf("%T", p.fn)
+		return fmt.Sprintf("<unnamed#%p>", p)
 	}
 
 	return fmt.Sprintf("<%s>", ret)
@@ -53,9 +53,9 @@ func (p *Proc) String() string {
 // NewProc is used to create a Proc
 //
 //	p := pipe.NewProc(
-//		pipe.Buffer(8),
-//		pipe.Workers(10),
-//		pipe.Func(func(c pipe.Consumer, s1, s2 pipe.Sender) error {
+//		pipe.WithBuffer(8),
+//		pipe.WithWorkers(10),
+//		pipe.WithFunc(func(c pipe.Consumer, s1, s2 pipe.Sender) error {
 //			...
 //		}),
 //	)
@@ -182,10 +182,10 @@ func WithSource(n int, source ...*Proc) ProcFunc {
 
 // WithNamedSource will link this proc to the sources by the outputs identified
 // by name s.
-func WithNamedSource(s string, source ...*Proc) ProcFunc {
+func WithNamedSource(n string, source ...*Proc) ProcFunc {
 	return func(p *Proc) {
 		for _, s := range source {
-			s.Link(s, p)
+			s.Link(n, p)
 		}
 	}
 }

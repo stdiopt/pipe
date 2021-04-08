@@ -42,7 +42,7 @@ func (d *dotWriter) nodeName(p *Proc) string {
 		return n
 	}
 	d.nameCount++
-	name := fmt.Sprintf("<unnamed#%d", d.nameCount)
+	name := fmt.Sprintf("unnamed#%d", d.nameCount)
 	d.names[p] = name
 	return name
 }
