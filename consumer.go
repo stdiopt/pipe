@@ -19,8 +19,9 @@ type Consumer interface {
 }
 
 type consumer struct {
-	ctx        context.Context
-	input      chan Message
+	ctx   context.Context
+	input chan Message
+	// middleware wraps middleware func before consuming
 	middleware func(fn ConsumerFunc) ConsumerFunc
 }
 

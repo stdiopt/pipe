@@ -15,7 +15,7 @@ A Proc:
 func main() {
 	// Create an origin that produces data, consumes from an DB/API or etc
 	origin := pipe.NewProc(
-		pipe.Func(func(_ pipe.Consumer, ints pipe.Sender) error {
+		pipe.WithFunc(func(_ pipe.Consumer, ints pipe.Sender) error {
 			for i := 0; i < 10; i++ {
 				if err := ints.Send(i); err !=nil {
 					return err
@@ -26,9 +26,9 @@ func main() {
 	)
 
 	evenodd := pipe.NewProc(
-		pipe.Workers(4),        // use 4 go routines
-		pipe.Source(0, origin), // consumes output 0 from origin
-		pipe.Func(func(c pipe.Consumer, odds, evens pipe.Sender) error {
+		pipe.WithWorkers(4),        // use 4 go routines
+		pipe.WithSource(0, origin), // consumes output 0 from origin
+		pipe.WithFunc(func(c pipe.Consumer, odds, evens pipe.Sender) error {
 			return c.Consume(func(vv interface{}) error {
 				v := c.Value().(int)
 				target := odds
@@ -45,10 +45,10 @@ func main() {
 	// consumes data produced by evenodd and write it to result slice
 	// could be an API endpoint/file/db
 	pipe.NewProc(
-		pipe.Buffer(10),          // buffer size of the consumer
-		pipe.Source(0, evenodd),  // consumes output 0 (odds) from evenodd
-		pipe.Source(1, evenodd),  // consumes output 1 (evens) from evenodd
-		pipe.Func(func(c pipe.Consumer) error {
+		pipe.WithBuffer(10),          // buffer size of the consumer
+		pipe.WithSource(0, evenodd),  // consumes output 0 (odds) from evenodd
+		pipe.WithSource(1, evenodd),  // consumes output 1 (evens) from evenodd
+		pipe.WithFunc(func(c pipe.Consumer) error {
 			return c.Consume(func(vv interface{}) error {
 				v := c.Value().(string) // we expect strings
 				res = append(res, v)

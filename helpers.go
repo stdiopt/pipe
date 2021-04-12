@@ -3,6 +3,8 @@ package pipe
 import (
 	"fmt"
 	"log"
+	"math"
+	"time"
 )
 
 type ConsumerMiddleware func(fn ConsumerFunc) ConsumerFunc
@@ -46,46 +48,64 @@ func RetryConsumer(tries int) ConsumerMiddleware {
 	}
 }
 
-func LogConsumer(prefix string) ConsumerMiddleware {
+func BackoffConsumer(max time.Duration, factor float64) ConsumerMiddleware {
+	b := &backoff{max: max, factor: factor}
 	return func(fn ConsumerFunc) ConsumerFunc {
-		log := log.New(log.Writer(), fmt.Sprintf("[%s] ", prefix), 0)
 		return func(m Message) error {
-			log.Println("Received:", m)
-			return fn(m)
+			err := fn(m)
+			if err == nil {
+				return nil
+			}
+			t := b.forAttempt(1)
+			for tries := 1; t < b.max; tries++ {
+				<-time.After(t)
+				err = fn(m)
+				if err == nil {
+					return nil
+				}
+				if err, ok := err.(errFatal); ok {
+					return err
+				}
+				t = b.forAttempt(tries)
+			}
+			return err
 		}
 	}
 }
 
-// RetryConsumer that retries on failure
-/*type RetryConsumer struct {
-	Consumer
-	Tries int
+type backoff struct {
+	max    time.Duration
+	factor float64
 }
 
-func NewRetryConsumer(c Consumer, tries int) RetryConsumer {
-	return RetryConsumer{c, tries}
-}
+func (c backoff) forAttempt(n int) time.Duration {
+	attempt := float64(n)
+	min := 100 * time.Millisecond
+	max := c.max
+	if max <= 0 {
+		max = 10 * time.Second
+	}
+	if min >= max {
+		return max
+	}
+	factor := c.factor
+	if factor <= 0 {
+		factor = 2
+	}
+	minf := float64(min)
+	durf := minf * math.Pow(factor, attempt)
+	// durf = rand.Float64()*(durf-minf) + minf
 
-func (r RetryConsumer) Consume(fn ConsumerFunc) error {
-	return r.Consumer.Consume(func(v interface{}) error {
-		var err error
-		retry := 0
-		for ; retry <= r.Tries; retry++ {
-			err = fn(v)
-			if err == nil {
-				break
-			}
-			if err, ok := err.(errFatal); ok {
-				return err
-			}
-		}
-		if err != nil {
-			return fmt.Errorf("%w (retries: %d)", err, retry)
-		}
-		return nil
-	})
-}*/
-
-type BackoffConsumer struct {
-	Consumer Consumer
+	if durf > math.MaxInt64 {
+		return max
+	}
+	dur := time.Duration(durf)
+	// keep within bounds
+	if dur < min {
+		return min
+	}
+	if dur > max {
+		return max
+	}
+	return dur
 }
