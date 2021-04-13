@@ -2,39 +2,62 @@ package pipe
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 )
 
+type ConsumerFunc func(v Message) error
+
 // Consumer provides methods to consume a stream
 type Consumer interface {
-	// Next will block until we received a context cancellation or an input
-	// if the input is closed or a cancellation received it returns false returns
-	// true if a value was fetched
-	//
-	//		for c.Next() {
-	//			v := c.Value()
-	//		}
-	//
-	Next() bool
-
-	// Value returns the value fetched by the last Next() iteration
-	Value() interface{}
-
-	// Consume iterate through the consumer using a func with a typed argument
-	// if error is not nil, it will break the iteration
-	Consume(fn interface{}) error
-
 	// Context returns the current consumer context
 	Context() context.Context
+
+	// Consume will call the fn for every value received,
+	// fn must be a func with a signature like `func(T)error` where T is any type
+	Consume(fn interface{}) error
 }
 
 type consumer struct {
 	ctx   context.Context
-	input chan interface{}
-	value interface{}
+	input chan Message
+	// middleware wraps middleware func before consuming
+	middleware func(fn ConsumerFunc) ConsumerFunc
 }
 
-func (c *consumer) Consume(fn interface{}) error {
+func (c *consumer) Context() context.Context { return c.ctx }
+
+// Consume will pass the consumer function through the middleware stack and
+// call the fn for every value received, returning an error will pass error
+// through and break the reader loop.
+func (c *consumer) Consume(ifn interface{}) error {
+	fn := makeConsumerFunc(ifn)
+	if c.middleware != nil {
+		fn = c.middleware(fn)
+	}
+	for {
+		select {
+		case <-c.ctx.Done():
+			return nil
+		case v, ok := <-c.input:
+			if !ok {
+				return nil
+			}
+			if err := fn(v); err != nil {
+				return fmt.Errorf("%w, origin: %v", err, v.Origin())
+			}
+		}
+	}
+}
+
+func makeConsumerFunc(fn interface{}) ConsumerFunc {
+	switch fn := fn.(type) {
+	case func(m Message) error:
+		return fn
+	case func(v interface{}) error:
+		return func(m Message) error { return fn(m.Value()) }
+	}
+
 	fnVal := reflect.ValueOf(fn)
 	fnTyp := fnVal.Type()
 	if fnTyp.NumIn() != 1 ||
@@ -43,33 +66,12 @@ func (c *consumer) Consume(fn interface{}) error {
 		panic("consume param should be 'func(t T) error'")
 	}
 	args := make([]reflect.Value, 1)
-	for c.Next() {
-		args[0] = reflect.ValueOf(c.Value())
+	return func(m Message) error {
+		args[0] = reflect.ValueOf(m.Value())
 		ret := fnVal.Call(args)
 		if err, ok := ret[0].Interface().(error); ok && err != nil {
 			return err
 		}
+		return nil
 	}
-	return nil
-}
-
-func (c *consumer) Next() bool {
-	select {
-	case <-c.ctx.Done():
-		return false
-	case v, ok := <-c.input:
-		if !ok {
-			return false
-		}
-		c.value = v
-		return true
-	}
-}
-
-func (c *consumer) Value() interface{} {
-	return c.value
-}
-
-func (c *consumer) Context() context.Context {
-	return c.ctx
 }

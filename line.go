@@ -9,14 +9,27 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+type Message interface {
+	Origin() *Proc
+	Value() interface{}
+}
+
+type message struct {
+	origin *Proc
+	value  interface{}
+}
+
+func (m message) Origin() *Proc      { return m.origin }
+func (m message) Value() interface{} { return m.value }
+
 type line struct {
 	sync.Mutex
 
 	eg  *errgroup.Group
 	ctx context.Context
 
-	procs map[*Proc]chan interface{}
-	chans map[chan interface{}]int
+	procs map[*Proc]chan Message
+	chans map[chan Message]int
 }
 
 func runLine(ctx context.Context, p *Proc) error {
@@ -24,8 +37,8 @@ func runLine(ctx context.Context, p *Proc) error {
 	l := line{
 		eg:    g,
 		ctx:   ctx,
-		procs: map[*Proc]chan interface{}{},
-		chans: map[chan interface{}]int{},
+		procs: map[*Proc]chan Message{},
+		chans: map[chan Message]int{},
 	}
 
 	l.get(p, 1)
@@ -33,7 +46,7 @@ func runLine(ctx context.Context, p *Proc) error {
 	return g.Wait()
 }
 
-func (l *line) add(n int, chs ...chan interface{}) {
+func (l *line) add(n int, chs ...chan Message) {
 	l.Lock()
 	defer l.Unlock()
 
@@ -48,13 +61,13 @@ func (l *line) add(n int, chs ...chan interface{}) {
 	}
 }
 
-// get will get or start a proc and return an output cchan to that proc
-func (l *line) get(p *Proc, n int) chan interface{} {
+// get will get or start a proc and return an output chan to that proc.
+func (l *line) get(p *Proc, n int) chan Message {
 	if ch, ok := l.procs[p]; ok {
 		l.add(n, ch)
 		return ch
 	}
-	ch := make(chan interface{}, p.bufsize)
+	ch := make(chan Message, p.bufsize)
 	l.add(n, ch)
 
 	l.procs[p] = ch
@@ -74,24 +87,33 @@ func (l *line) get(p *Proc, n int) chan interface{} {
 		nsenders--
 	}
 	for i := 0; i < nsenders; i++ {
-		s := sender{ctx: l.ctx}
 		// get Indexed outputs
+		outputs := []chan Message{}
 		for _, t := range p.getOutputs(i) {
-			s.outputs = append(s.outputs, l.get(t, nworkers))
+			outputs = append(outputs, l.get(t, nworkers))
+		}
+		s := sender{
+			ctx:     l.ctx,
+			origin:  p,
+			outputs: outputs,
 		}
 		senders = append(senders, s)
 	}
 
-	for i := 0; i < nworkers; i++ {
-		args := make([]reflect.Value, 0, fnTyp.NumIn())
-		if fnTyp.In(0) == consumerTyp {
-			c := &consumer{ctx: l.ctx, input: ch}
-			args = append(args, reflect.ValueOf(c))
+	args := make([]reflect.Value, 0, fnTyp.NumIn())
+	if fnTyp.In(0) == consumerTyp {
+		c := &consumer{
+			ctx:        l.ctx,
+			input:      ch,
+			middleware: p.consumerMiddleware,
 		}
-		for _, s := range senders {
-			args = append(args, reflect.ValueOf(s))
-		}
+		args = append(args, reflect.ValueOf(c))
+	}
+	for _, s := range senders {
+		args = append(args, reflect.ValueOf(s))
+	}
 
+	for i := 0; i < nworkers; i++ {
 		l.eg.Go(func() error {
 			defer func() {
 				for _, s := range senders {
@@ -113,6 +135,7 @@ func (l *line) get(p *Proc, n int) chan interface{} {
 }
 
 var (
+	contextTyp  = reflect.TypeOf((*context.Context)(nil)).Elem()
 	consumerTyp = reflect.TypeOf((*Consumer)(nil)).Elem()
 	senderTyp   = reflect.TypeOf((*Sender)(nil)).Elem()
 	errTyp      = reflect.TypeOf((*error)(nil)).Elem()
@@ -120,7 +143,7 @@ var (
 
 func validateProcFunc(fnTyp reflect.Type) error {
 	if fnTyp.NumIn() == 0 {
-		return errors.New("func must have at least 1 input")
+		return errors.New("func must have at least 1 param")
 	}
 	for i := 0; i < fnTyp.NumIn(); i++ {
 		arg := fnTyp.In(i)
