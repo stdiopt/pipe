@@ -6,6 +6,7 @@ import (
 	"reflect"
 )
 
+// ConsumerFunc type of base function for the consumer
 type ConsumerFunc func(v Message) error
 
 // Consumer provides methods to consume a stream

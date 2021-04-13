@@ -9,6 +9,8 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+// Message is the type that flows along a line, with the current value and
+// origin
 type Message interface {
 	Origin() *Proc
 	Value() interface{}
@@ -80,7 +82,7 @@ func (l *line) get(p *Proc, n int) chan Message {
 		nworkers = 1
 	}
 
-	// Senders are shared accross workers
+	// Senders are shared across workers
 	senders := []sender{}
 	nsenders := fnTyp.NumIn()
 	if fnTyp.In(0) == consumerTyp {
@@ -135,7 +137,6 @@ func (l *line) get(p *Proc, n int) chan Message {
 }
 
 var (
-	contextTyp  = reflect.TypeOf((*context.Context)(nil)).Elem()
 	consumerTyp = reflect.TypeOf((*Consumer)(nil)).Elem()
 	senderTyp   = reflect.TypeOf((*Sender)(nil)).Elem()
 	errTyp      = reflect.TypeOf((*error)(nil)).Elem()
