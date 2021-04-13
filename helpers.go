@@ -7,6 +7,7 @@ import (
 	"time"
 )
 
+// ConsumerMiddleware func type to build consumers middleware
 type ConsumerMiddleware func(fn ConsumerFunc) ConsumerFunc
 
 func mergeMiddlewares(mws ...ConsumerMiddleware) ConsumerMiddleware {
@@ -23,6 +24,8 @@ type errFatal struct{ err error }
 func (e errFatal) Error() string { return e.err.Error() }
 func (e errFatal) Unwrap() error { return e.err }
 
+// RetryConsumer consumer middleware that will retry consumer up to 'tries' on
+// error
 func RetryConsumer(tries int) ConsumerMiddleware {
 	return func(fn ConsumerFunc) ConsumerFunc {
 		return func(m Message) error {
@@ -48,6 +51,8 @@ func RetryConsumer(tries int) ConsumerMiddleware {
 	}
 }
 
+// BackoffConsumer consumer middleware that will retry at an exponential time
+// until it reaches the maximum duration
 func BackoffConsumer(max time.Duration, factor float64) ConsumerMiddleware {
 	b := &backoff{max: max, factor: factor}
 	return func(fn ConsumerFunc) ConsumerFunc {
