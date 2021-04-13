@@ -1,4 +1,2 @@
-github.com/gohxs/prettylog v0.0.0-20190304114953-faf23b5b615b h1:BDNsGUW+JNDpE3+3S5dtdM8yYbFE746Y4OHDezogDPw=
-github.com/gohxs/prettylog v0.0.0-20190304114953-faf23b5b615b/go.mod h1:ywL/KcpcHmutSZh0RlVDJqOG7TUP3kqJLK8nW/7FtMw=
 golang.org/x/sync v0.0.0-20201207232520-09787c993a3a h1:DcqTD9SDLc+1P/r1EmRBwnVsrOwW+kk2vWf9n+1sGhs=
 golang.org/x/sync v0.0.0-20201207232520-09787c993a3a/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
